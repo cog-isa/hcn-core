@@ -1,0 +1,5 @@
+4
+movie_image_plus.txt
+movie_image_black_white_rect.txt
+movie_image_cross.txt
+movie_image_round3.txt
