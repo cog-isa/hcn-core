@@ -41,7 +41,7 @@ class HTMNetwork:
         #for frame in self.movie:
             # numbers
             # input = np.split(np.concatenate(np.array_split(frame, 16), 1), 16*16, 1)
-        xs = [np.random.rand(1, 4) for _ in range(100)]
+        xs = [np.random.rand(1, 4) for _ in range(200)]
         node = self.network[0][0]
         for x in xs:
             node.process_forward(x)
@@ -49,7 +49,7 @@ class HTMNetwork:
 #               node
 
 class Node:
-    def __init__(self, max_num_patterns=10, max_num_chains=5, input_len=4):
+    def __init__(self, max_num_patterns=20, max_num_chains=5, input_len=4):
         self.max_num_chains = max_num_chains
         self.max_num_patterns = max_num_patterns
         self.markov_graph = np.empty((0, 0))
@@ -145,7 +145,7 @@ class Node:
             log.debug("prev_alpha!: \n {}".format(self.prev_alpha))
             self.markov_chains.add_node(prev_index, index)
         else:
-            self.markov_chains.strengthen_connect(prev_index, index)
+            self.markov_chains.strengthen_connect(prev_index, index, self.markov_graph[prev_index, index])
 
         if prev_index != None :
             self.markov_graph[prev_index, index] += 1
@@ -155,12 +155,16 @@ class Node:
 # online chain clustering
 
 class MarkovNode:
-    def __init__(self, parent_index, index):
+    def __init__(self, index):
         self.index = index
         self.strongest_connect = 0
-        self.parent = parent_index
+        self.parent = None
         self.children = []
         self.chain = None
+
+    def addparent(self, parent):
+        self.parent = parent
+        parent.children.append(self)
 
 class MarkovChains:
     def __init__(self, max_num):
@@ -172,55 +176,62 @@ class MarkovChains:
         # changed list repr and therefore code become simpler
 
     def add_node(self, prev_index, cur_index):
-        new = MarkovNode(prev_index, cur_index)
+        new = MarkovNode(cur_index)
         self.nodes.append(new)
         for (i, chain) in enumerate(self.chains):
             if not chain:
                 chain.append(new.index)
                 new.chain = i
                 return
-        new.chain = self.nodes[prev_index].chain
+        parent = self.nodes[prev_index]
+        new.addparent(parent)
+        new.chain = parent.chain
         self.chains[new.chain].append(new.index)
 
-    def strengthen_connect(self, prev_index, cur_index):
+    def strengthen_connect(self, prev_index, cur_index, val):
         # ignore new connections between until enough chains :(
-        if (self.num < self.max_num):
-            return
+        #if (self.num < self.max_num):
+        #   return
 
-        new_connect = self.markov_graph[prev_index, cur_index]
+        new_connect = val
         cur_node = self.nodes[cur_index]
         prev_node = self.nodes[prev_index]
 
         # probably unpythonic as fuck
-        # need to be restructured
-
         if new_connect > prev_node.strongest_connect:
-            self.reconnect(prev_node, cur_index, new_connect)
+            self.reconnect(prev_node, cur_node, new_connect)
             if prev_node.chain != cur_node.chain:
                 # older chain is more likely to absorb younger one
                 if prev_node.strongest_connect < cur_node.strongest_connect:
-                    self.move(prev_node, cur_node.chain)
+                    self.move(prev_node, cur_node.chain, prev_node)
                 else:
-                    self.move(cur_node, prev_node.chain)
+                    self.move(cur_node, prev_node.chain, cur_node)
 
         if new_connect > cur_node.strongest_connect:
-            self.reconnect(cur_node, prev_index, new_connect)
+            self.reconnect(cur_node, prev_node, new_connect)
 
     def reconnect(self, node, new_parent, new_connect):
         node.strongest_connect = new_connect
-        # do nothing in case of same parent
-        if node.parent != new_parent:
-            if node.parent is not None or node.parent != node.index:
-                node.parent.children.remove(node)
-                new_parent.children.add(node)
-            node.parent = new_parent
+        if node.parent != new_parent:  # is not?
+            if node.parent == node:
+                node.parent = node
+            else:
+                if node.parent is not None:
+                    node.parent.children.remove(node)
+                node.addparent(new_parent)
 
     # move node and its children to another chain
-    def move(self, node, dest_chain):
-        old_chain = node.chain
+    # decorator?
+    def move(self, node, dest_chain, root = None):
+        log.debug("$move")
+        self.chains[node.chain].remove(node.index)
         node.chain = dest_chain
+        self.chains[node.chain].append(node.index)
+        #print(node)
+        #print(node.children)
         for child in node.children:
-            child.chain = dest_chain
+            if child != root:
+                self.move(child, dest_chain, root)
 
 if __name__ == "__main__":
     np.set_printoptions(threshold=2000, linewidth=300, precision=3)
