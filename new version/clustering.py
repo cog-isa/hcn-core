@@ -1,5 +1,9 @@
 import random
 import copy
+from sklearn.cluster import MiniBatchKMeans
+import numpy as np
+np.set_printoptions(threshold=2000, linewidth=300, precision=3)
+
 
 class DSU:
     def __init__(self, number_of_sets):
@@ -84,3 +88,25 @@ class OnlineKmeansClusterer:
         for i in range(self.__dimension):
             self.__centers[cluster][i] += (pattern[i] - self.__centers[cluster][i]) / self.__num_elems[cluster]
         return cluster
+
+##### cluster tests
+
+a = MiniBatchKMeans(n_clusters=8, verbose=True)
+e = np.random.rand(8, 9)
+a.partial_fit(e)
+print(a.cluster_centers_)
+
+c = a.partial_fit([1 for _ in range(9)]).labels_
+
+print(a.cluster_centers_)
+print(c)
+# a.partial_fit(np.random.rand(3, 3).reshape(1, -1))
+
+# a.partial_fit(d)
+
+# a.partial_fit(np.array((4.1, 4.1)).reshape(1, -1))
+# a.partial_fit(np.array((3.1, 3.1)).reshape(1, -1))
+# a.partial_fit(np.array((5.5, 5.5)).reshape(1, -1))
+# a.partial_fit(np.array((5, 5)).reshape(1, -1))
+# a.partial_fit(np.array((3.5, 3.5)).reshape(1, -1))
+
