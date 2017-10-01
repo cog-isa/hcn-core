@@ -57,7 +57,6 @@ class Node:
         # mb 3d-matrix is better
         self.patterns = []
         # value
-        self.prev_alpha = np.empty(0)
         self.prev_pattern_index = None
         self.node_input = np.empty((0, 0))
         self.alpha = np.empty(0)
@@ -108,6 +107,7 @@ class Node:
 
     def calc_feedforward_likelihood(self):
         log.info("Calculating feedforward_likelihood")
+        ff_likelihood = np.zeros(self.max_num_chains)
 
         self.normalize_markov_graph()
         log.debug("n_m_graph: \n {}".format(self.normalized_markov_graph))
@@ -115,14 +115,15 @@ class Node:
         for (n, chain) in enumerate(self.markov_chains.chains):
             if chain:
                 log.debug("chain #{}: {}".format(n, chain))
-                self.alpha[chain] = np.dot(self.prev_alpha[chain], self.normalized_markov_graph[np.ix_(chain)])
+                # can be written in 1 line
+                proc_alpha = np.dot(self.alpha[chain], self.normalized_markov_graph[np.ix_(chain, chain)])
+                self.alpha[chain] = np.multiply(proc_alpha, self.pattern_likelihood[chain])
+                ff_likelihood[n] = np.sum(self.alpha[chain])
 
         log.debug("alpha: {}".format(self.alpha))
-        ff_likelihood = self.alpha.dot(self.pattern_likelihood)
         # normalization
         if np.any(ff_likelihood):
             ff_likelihood /= np.sum(ff_likelihood)
-        self.prev_alpha = self.alpha
 
         log.debug("ff_likelihood: {}".format(ff_likelihood))
         return ff_likelihood
@@ -140,9 +141,8 @@ class Node:
             index = len(self.labels)
             self.labels.append(label)
             self.markov_graph = np.pad(self.markov_graph, ((0, 1), (0, 1)), 'constant')
-            self.prev_alpha = np.append(self.prev_alpha, 0)
             self.alpha = np.append(self.alpha, 0)  #
-            log.debug("prev_alpha!: \n {}".format(self.prev_alpha))
+            log.debug("prev_alpha!: \n {}".format(self.alpha))
             self.markov_chains.add_node(prev_index, index)
         else:
             self.markov_chains.strengthen_connect(prev_index, index, self.markov_graph[prev_index, index])
@@ -192,7 +192,6 @@ class MarkovChains:
         # ignore new connections between until enough chains :(
         #if (self.num < self.max_num):
         #   return
-
         new_connect = val
         cur_node = self.nodes[cur_index]
         prev_node = self.nodes[prev_index]
@@ -203,9 +202,9 @@ class MarkovChains:
             if prev_node.chain != cur_node.chain:
                 # older chain is more likely to absorb younger one
                 if prev_node.strongest_connect < cur_node.strongest_connect:
-                    self.move(prev_node, cur_node.chain, prev_node)
+                    self.move_root(prev_node, cur_node.chain)
                 else:
-                    self.move(cur_node, prev_node.chain, cur_node)
+                    self.move_root(cur_node, prev_node.chain)
 
         if new_connect > cur_node.strongest_connect:
             self.reconnect(cur_node, prev_node, new_connect)
@@ -220,9 +219,11 @@ class MarkovChains:
                     node.parent.children.remove(node)
                 node.addparent(new_parent)
 
+    def move_root(self, node, dest_chain):
+        self.move(node, dest_chain, node)
     # move node and its children to another chain
-    # decorator?
-    def move(self, node, dest_chain, root = None):
+
+    def move(self, node, dest_chain, root=None):
         log.debug("$move")
         self.chains[node.chain].remove(node.index)
         node.chain = dest_chain
