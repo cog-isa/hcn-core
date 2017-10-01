@@ -54,10 +54,9 @@ class Loader:
         animation_v = []
 
         img = image
-        animation_h.append(img)
         while img.any():
-            img = distort.shift(img, (0, -1))
             animation_h.append(img)
+            img = distort.shift(img, (0, -1))
         animation_h.reverse()
 
         img = image
@@ -66,10 +65,9 @@ class Loader:
             animation_h.append(img)
 
         img = image
-        animation_v.append(img)
         while img.any():
-            img = distort.shift(img, (-1, 0))
             animation_v.append(img)
+            img = distort.shift(img, (-1, 0))
         animation_v.reverse()
 
         img = image
