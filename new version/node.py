@@ -41,7 +41,12 @@ class HTMNetwork:
         #for frame in self.movie:
             # numbers
             # input = np.split(np.concatenate(np.array_split(frame, 16), 1), 16*16, 1)
-        xs = [np.random.rand(1, 4) for _ in range(200)]
+        vert = np.array([[0, 1, 0], [0, 1, 0], [0, 1, 0]])
+        hor = np.array([[0, 0, 0], [1, 1, 1], [0, 0, 0]])
+        diag = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+        xs = self.loader.simple_movie([vert, vert, vert, vert, vert, vert, vert, hor, hor, hor, hor, hor, hor, hor])
+        for x in xs:
+            print(x)
         node = self.network[0][0]
         for x in xs:
             node.process_forward(x)
@@ -49,7 +54,7 @@ class HTMNetwork:
 #               node
 
 class Node:
-    def __init__(self, max_num_patterns=20, max_num_chains=5, input_len=4):
+    def __init__(self, max_num_patterns=20, max_num_chains=3, input_len=9):
         self.max_num_chains = max_num_chains
         self.max_num_patterns = max_num_patterns
         self.markov_graph = np.empty((0, 0))
@@ -69,7 +74,7 @@ class Node:
 
 # empty pattern is another pattern
     def process_forward(self, node_input, learn_mode=True):
-        log.debug("Current centers:\n {}".format(self.clust.cluster_centers_))
+        log.debug("Stored patterns:\n {}".format(self.clust.cluster_centers_[self.labels, :]))
 
         if learn_mode:
             self.add_pattern(node_input)
@@ -131,8 +136,8 @@ class Node:
     def add_pattern(self, pattern):
         log.debug("Pattern: \n {}".format(pattern))
         prev_index = self.prev_pattern_index
-        # pattern flat
 
+        # pattern flat
         label = self.clust.partial_fit(pattern.reshape(1, -1)).labels_
         try:
             index = self.labels.index(label)
@@ -141,7 +146,7 @@ class Node:
             index = len(self.labels)
             self.labels.append(label)
             self.markov_graph = np.pad(self.markov_graph, ((0, 1), (0, 1)), 'constant')
-            self.alpha = np.append(self.alpha, 0)  #
+            self.alpha = np.append(self.alpha, 0.1)  #
             log.debug("prev_alpha!: \n {}".format(self.alpha))
             self.markov_chains.add_node(prev_index, index)
         else:
@@ -235,7 +240,7 @@ class MarkovChains:
                 self.move(child, dest_chain, root)
 
 if __name__ == "__main__":
-    np.set_printoptions(threshold=2000, linewidth=300, precision=3)
+    np.set_printoptions(threshold=2000, linewidth=300, precision=3, suppress=True)
     l = Loader()
     n = HTMNetwork(l)
     n.generate_data()
