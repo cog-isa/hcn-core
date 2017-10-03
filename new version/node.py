@@ -44,7 +44,7 @@ class HTMNetwork:
         vert = np.array([[0, 1, 0], [0, 1, 0], [0, 1, 0]])
         hor = np.array([[0, 0, 0], [1, 1, 1], [0, 0, 0]])
         diag = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
-        xs = self.loader.simple_movie([vert, vert, vert, vert, vert, vert, vert, hor, hor, hor, hor, hor, hor, hor])
+        xs = self.loader.simple_movie([vert for _ in range(10)] + [hor for _ in range(10)] + [diag for _ in range(10)])
         for x in xs:
             print(x)
         node = self.network[0][0]
@@ -54,7 +54,7 @@ class HTMNetwork:
 #               node
 
 class Node:
-    def __init__(self, max_num_patterns=20, max_num_chains=3, input_len=9):
+    def __init__(self, max_num_patterns=300, max_num_chains=4, input_len=9):
         self.max_num_chains = max_num_chains
         self.max_num_patterns = max_num_patterns
         self.markov_graph = np.empty((0, 0))
@@ -71,10 +71,14 @@ class Node:
         self.clust = MiniBatchKMeans(n_clusters=self.max_num_patterns, verbose=1, batch_size=1)
         self.clust.partial_fit(np.random.rand(self.max_num_patterns, input_len))
         self.labels = []
+        self.alpha_0 = 1
+        self.min_weight = 0.01
 
 # empty pattern is another pattern
     def process_forward(self, node_input, learn_mode=True):
-        log.debug("Stored patterns:\n {}".format(self.clust.cluster_centers_[self.labels, :]))
+        for (n, label) in enumerate(self.labels):
+            log.debug("#{}\n{}".format(n, self.clust.cluster_centers_[label].reshape(3, 3)))
+        # log.debug("Stored patterns:\n {}".format(self.clust.cluster_centers_[self.labels, :]))
 
         if learn_mode:
             self.add_pattern(node_input)
@@ -104,6 +108,7 @@ class Node:
         norm[norm == 0] = 1
         log.debug("norm: {}".format(norm))
         self.normalized_markov_graph = self.markov_graph / norm[:, None]
+        self.normalized_markov_graph[self.normalized_markov_graph == 0] = self.min_weight
 
     def calc_pattern_likelihood(self, node_input):
         patterns = self.clust.cluster_centers_
@@ -144,9 +149,9 @@ class Node:
         except ValueError:
             log.info("adding new pattern")
             index = len(self.labels)
-            self.labels.append(label)
+            self.labels.append(label[0])
             self.markov_graph = np.pad(self.markov_graph, ((0, 1), (0, 1)), 'constant')
-            self.alpha = np.append(self.alpha, 0.1)  #
+            self.alpha = np.append(self.alpha, self.alpha_0)  #
             log.debug("prev_alpha!: \n {}".format(self.alpha))
             self.markov_chains.add_node(prev_index, index)
         else:
