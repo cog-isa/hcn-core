@@ -33,7 +33,7 @@ class HTMNetwork:
         self.network = [[Node() for _ in range(size)] for size in self.shape]
         self.chains = [MarkovChains(max) for max in shape_max_chains]
 
-    def generate_data(self, n = 1):
+    def generate_data(self, n=1):
         self.train, self.labels = self.loader.load_train()
         self.movie = self.loader.simple_movie(self.train[:n])
 
@@ -43,18 +43,23 @@ class HTMNetwork:
             # input = np.split(np.concatenate(np.array_split(frame, 16), 1), 16*16, 1)
         vert = np.array([[0, 1, 0], [0, 1, 0], [0, 1, 0]])
         hor = np.array([[0, 0, 0], [1, 1, 1], [0, 0, 0]])
-        diag = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
-        xs = self.loader.simple_movie([vert for _ in range(10)] + [hor for _ in range(10)] + [diag for _ in range(10)])
-        for x in xs:
-            print(x)
+        an1 = self.loader.animate(vert)[0][:-1]
+        an2 = self.loader.animate(hor)[1][:-1]
+        input = []
+        for _ in range(5):
+            input += an1
+        for _ in range(5):
+            input += an2
+         # for x in input:
+         #    print(x)
         node = self.network[0][0]
-        for x in xs:
-            node.process_forward(x)
+        for x in input:
+            node.process_forward(x/1.0)
 #         for node in self.network[0]:
 #               node
 
 class Node:
-    def __init__(self, max_num_patterns=300, max_num_chains=4, input_len=9):
+    def __init__(self, max_num_patterns=100, max_num_chains=2, input_len=9):
         self.max_num_chains = max_num_chains
         self.max_num_patterns = max_num_patterns
         self.markov_graph = np.empty((0, 0))
@@ -71,14 +76,17 @@ class Node:
         self.clust = MiniBatchKMeans(n_clusters=self.max_num_patterns, verbose=1, batch_size=1)
         self.clust.partial_fit(np.random.rand(self.max_num_patterns, input_len))
         self.labels = []
-        self.alpha_0 = 1
+        self.alpha_0 = 0.01
         self.min_weight = 0.01
+        self.min_input = 0
 
 # empty pattern is another pattern
     def process_forward(self, node_input, learn_mode=True):
         for (n, label) in enumerate(self.labels):
             log.debug("#{}\n{}".format(n, self.clust.cluster_centers_[label].reshape(3, 3)))
         # log.debug("Stored patterns:\n {}".format(self.clust.cluster_centers_[self.labels, :]))
+
+        node_input[node_input == 0] = self.min_input
 
         if learn_mode:
             self.add_pattern(node_input)
@@ -127,6 +135,7 @@ class Node:
                 log.debug("chain #{}: {}".format(n, chain))
                 # can be written in 1 line
                 proc_alpha = np.dot(self.alpha[chain], self.normalized_markov_graph[np.ix_(chain, chain)])
+                log.debug("proc_alpha: {}".format(proc_alpha))
                 self.alpha[chain] = np.multiply(proc_alpha, self.pattern_likelihood[chain])
                 ff_likelihood[n] = np.sum(self.alpha[chain])
 
@@ -245,7 +254,7 @@ class MarkovChains:
                 self.move(child, dest_chain, root)
 
 if __name__ == "__main__":
-    np.set_printoptions(threshold=2000, linewidth=300, precision=3, suppress=True)
+    np.set_printoptions(threshold=2000, linewidth=300, precision=6, suppress=True)
     l = Loader()
     n = HTMNetwork(l)
     n.generate_data()
