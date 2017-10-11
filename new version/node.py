@@ -3,6 +3,7 @@ from sklearn.cluster import MiniBatchKMeans
 from functools import reduce
 from bitarray import bitarray
 import logging
+from chains import *
 
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
@@ -43,23 +44,28 @@ class HTMNetwork:
             # input = np.split(np.concatenate(np.array_split(frame, 16), 1), 16*16, 1)
         vert = np.array([[0, 1, 0], [0, 1, 0], [0, 1, 0]])
         hor = np.array([[0, 0, 0], [1, 1, 1], [0, 0, 0]])
+        diag = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+
         an1 = self.loader.animate(vert)[0][:-1]
         an2 = self.loader.animate(hor)[1][:-1]
-        input = []
-        for _ in range(5):
-            input += an1
-        for _ in range(5):
-            input += an2
+        an3 = self.loader.animate(diag)[0][:-1] + self.loader.animate(diag)[1][:-1]
+        star = [np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]]),
+                np.array([[0, 0, 1], [0, 1, 0], [1, 0, 0]]),
+                np.array([[1, 0, 1], [0, 1, 0], [1, 0, 1]])]
+
+        input = reduce((lambda x, y: x + y), [an1 for _ in range(3)] + [an2 for _ in range(3)] + [star for _ in range(3)])
+        input += an1
+
          # for x in input:
          #    print(x)
-        node = self.network[0][0]
+        node = InputNode()
         for x in input:
             node.process_forward(x/1.0)
 #         for node in self.network[0]:
 #               node
 
 class Node:
-    def __init__(self, max_num_patterns=100, max_num_chains=2, input_len=9):
+    def __init__(self, max_num_patterns=100, max_num_chains=3, input_len=9):
         self.max_num_chains = max_num_chains
         self.max_num_patterns = max_num_patterns
         self.markov_graph = np.empty((0, 0))
@@ -80,7 +86,7 @@ class Node:
         self.min_weight = 0.01
         self.min_input = 0
 
-# empty pattern is another pattern
+    # empty pattern is another pattern
     def process_forward(self, node_input, learn_mode=True):
         for (n, label) in enumerate(self.labels):
             log.debug("#{}\n{}".format(n, self.clust.cluster_centers_[label].reshape(3, 3)))
@@ -95,32 +101,24 @@ class Node:
 
         return ff_likelihood
 
-    def input_to_pattern(self, node_input: np.array) -> np.array:
-        # now input is pattern, kinda
+    # now input is pattern, kinda
 
-        self.node_input = node_input
-        chosen_pos = np.argmax(node_input, 1)
-
-        pattern = np.zeros(node_input.shape, bool)
-        for x in enumerate(chosen_pos):
-            pattern[x] = (node_input[x] != 0)
-        # its possible use array-indexes instead loop
-        # pattern[range(len(pattern)), pattern] = (node_input[pattern] != 0)
-
-        return pattern
-
-    def normalize_markov_graph(self):
-        # standart?
-        norm = self.markov_graph.sum(1)
-        # no division by zero
-        norm[norm == 0] = 1
-        log.debug("norm: {}".format(norm))
-        self.normalized_markov_graph = self.markov_graph / norm[:, None]
-        self.normalized_markov_graph[self.normalized_markov_graph == 0] = self.min_weight
+    # def input_to_pattern(self, node_input: np.array) -> np.array:
+    #
+    #     self.node_input = node_input
+    #     chosen_pos = np.argmax(node_input, 1)
+    #
+    #     pattern = np.zeros(node_input.shape, bool)
+    #     for x in enumerate(chosen_pos):
+    #         pattern[x] = (node_input[x] != 0)
+    # #its possible use array-indexes instead loop
+    # #pattern[range(len(pattern)), pattern] = (node_input[pattern] != 0)
+    #     return pattern
 
     def calc_pattern_likelihood(self, node_input):
         patterns = self.clust.cluster_centers_
-        self.pattern_likelihood = np.array([np.vdot(patterns[label], node_input) for label in self.labels])
+        # self.pattern_likelihood = np.array([np.vdot(patterns[label], node_input) for label in self.labels])
+        self.pattern_likelihood = np.dot(patterns[self.labels], node_input.reshape(-1, 1))
         log.debug("likelihood:\n {}".format(self.pattern_likelihood))
 
     def calc_feedforward_likelihood(self):
@@ -146,6 +144,15 @@ class Node:
 
         log.debug("ff_likelihood: {}".format(ff_likelihood))
         return ff_likelihood
+
+    def normalize_markov_graph(self):
+        # standart?
+        norm = self.markov_graph.sum(1)
+        # no division by zero
+        norm[norm == 0] = 1
+        log.debug("norm: {}".format(norm))
+        self.normalized_markov_graph = self.markov_graph / norm[:, None]
+        self.normalized_markov_graph[self.normalized_markov_graph == 0] = self.min_weight
 
     def add_pattern(self, pattern):
         log.debug("Pattern: \n {}".format(pattern))
@@ -173,85 +180,16 @@ class Node:
 
 # online chain clustering
 
-class MarkovNode:
-    def __init__(self, index):
-        self.index = index
-        self.strongest_connect = 0
-        self.parent = None
-        self.children = []
-        self.chain = None
 
-    def addparent(self, parent):
-        self.parent = parent
-        parent.children.append(self)
+class InputNode(Node):
+    def calc_pattern_likelihood(self, node_input):
+        patterns = self.clust.cluster_centers_[self.labels]
+        pattern_likelihood = 1/np.linalg.norm(patterns - node_input.reshape(1, -1), 2, 1)
+        log.debug(pattern_likelihood)
+        self.pattern_likelihood = pattern_likelihood/np.max(pattern_likelihood)
+        log.debug("likelihood:\n {}".format(self.pattern_likelihood))
 
-class MarkovChains:
-    def __init__(self, max_num):
-        self.num = 0
-        self.max_num = max_num
-        self.nodes = []
-        self.chains = [[] for _ in range(max_num)]
-        # self.chain_nums = []
-        # changed list repr and therefore code become simpler
 
-    def add_node(self, prev_index, cur_index):
-        new = MarkovNode(cur_index)
-        self.nodes.append(new)
-        for (i, chain) in enumerate(self.chains):
-            if not chain:
-                chain.append(new.index)
-                new.chain = i
-                return
-        parent = self.nodes[prev_index]
-        new.addparent(parent)
-        new.chain = parent.chain
-        self.chains[new.chain].append(new.index)
-
-    def strengthen_connect(self, prev_index, cur_index, val):
-        # ignore new connections between until enough chains :(
-        #if (self.num < self.max_num):
-        #   return
-        new_connect = val
-        cur_node = self.nodes[cur_index]
-        prev_node = self.nodes[prev_index]
-
-        # probably unpythonic as fuck
-        if new_connect > prev_node.strongest_connect:
-            self.reconnect(prev_node, cur_node, new_connect)
-            if prev_node.chain != cur_node.chain:
-                # older chain is more likely to absorb younger one
-                if prev_node.strongest_connect < cur_node.strongest_connect:
-                    self.move_root(prev_node, cur_node.chain)
-                else:
-                    self.move_root(cur_node, prev_node.chain)
-
-        if new_connect > cur_node.strongest_connect:
-            self.reconnect(cur_node, prev_node, new_connect)
-
-    def reconnect(self, node, new_parent, new_connect):
-        node.strongest_connect = new_connect
-        if node.parent != new_parent:  # is not?
-            if node.parent == node:
-                node.parent = node
-            else:
-                if node.parent is not None:
-                    node.parent.children.remove(node)
-                node.addparent(new_parent)
-
-    def move_root(self, node, dest_chain):
-        self.move(node, dest_chain, node)
-    # move node and its children to another chain
-
-    def move(self, node, dest_chain, root=None):
-        log.debug("$move")
-        self.chains[node.chain].remove(node.index)
-        node.chain = dest_chain
-        self.chains[node.chain].append(node.index)
-        #print(node)
-        #print(node.children)
-        for child in node.children:
-            if child != root:
-                self.move(child, dest_chain, root)
 
 if __name__ == "__main__":
     np.set_printoptions(threshold=2000, linewidth=300, precision=6, suppress=True)
