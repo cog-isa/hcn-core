@@ -7,16 +7,18 @@ from chains import *
 
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
+# log.disabled = True
 
-#forget old connections
-#bias to cut connection
-#bias to start connection
+# forget old connections
+# bias to cut connection
+# bias to start connection
 from data_loader import Loader
+
 
 class HTMNetwork:
     def __init__(self, loader, weights=None, shape=None, shape_max_chains=None, shape_max_patterns=None):
         if shape is None:
-            shape = [16*16, 16*4, 16]
+            shape = [16 * 16, 16 * 4, 16]
         if weights is None:
             weights = [np.zeros(z) for z in zip(shape[:-1], shape[1:])]
         if shape_max_chains is None:
@@ -39,33 +41,44 @@ class HTMNetwork:
         self.movie = self.loader.simple_movie(self.train[:n])
 
     def start(self, n=1000):
-        #for frame in self.movie:
-            # numbers
-            # input = np.split(np.concatenate(np.array_split(frame, 16), 1), 16*16, 1)
+        # for frame in self.movie:
+        # numbers
+        # input = np.split(np.concatenate(np.array_split(frame, 16), 1), 16*16, 1)
         vert = np.array([[0, 1, 0], [0, 1, 0], [0, 1, 0]])
         hor = np.array([[0, 0, 0], [1, 1, 1], [0, 0, 0]])
         diag = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
 
-        an1 = self.loader.animate(vert)[0][:-1]
-        an2 = self.loader.animate(hor)[1][:-1]
-        an3 = self.loader.animate(diag)[0][:-1] + self.loader.animate(diag)[1][:-1]
+        an_ver1 = self.loader.animate(vert)[0][:-1]
+        an_ver2 = self.loader.animate(vert)[1][:-1]
+        an_hor1 = self.loader.animate(hor)[0][:-1]
+        an_hor2 = self.loader.animate(hor)[1][:-1]
+        an_diag1 = self.loader.animate(diag)[0][:-1]
+        an_diag2 = self.loader.animate(diag)[1][:-1]
+        examples = [an_ver1, an_ver2, an_hor1, an_hor2, an_diag1, an_diag2]
+        choice = np.random.randint(6, size=100)
+        print(choice)
+        input = reduce((lambda x, y: x + y), [examples[i] for i in choice])
+        for i in input:
+            print(i)
+
         star = [np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]]),
                 np.array([[0, 0, 1], [0, 1, 0], [1, 0, 0]]),
                 np.array([[1, 0, 1], [0, 1, 0], [1, 0, 1]])]
 
-        input = reduce((lambda x, y: x + y), [an1 for _ in range(3)] + [an2 for _ in range(3)] + [star for _ in range(3)])
-        input += an1
-
-         # for x in input:
-         #    print(x)
+        # input = reduce((lambda x, y: x + y), [an1 for _ in range(2)] + [an2 for _ in range(2)]
+        #                + [star] + [an1] + [an2] + [star for _ in range(2)] + [an1])
+        # for x in input:
+        #    print(x)
         node = InputNode()
         for x in input:
-            node.process_forward(x/1.0)
-#         for node in self.network[0]:
+            node.process_forward(x / 1.0)
+
+
+# for node in self.network[0]:
 #               node
 
 class Node:
-    def __init__(self, max_num_patterns=100, max_num_chains=3, input_len=9):
+    def __init__(self, max_num_patterns=200, max_num_chains=15, input_len=9):
         self.max_num_chains = max_num_chains
         self.max_num_patterns = max_num_patterns
         self.markov_graph = np.empty((0, 0))
@@ -161,22 +174,23 @@ class Node:
         # pattern flat
         label = self.clust.partial_fit(pattern.reshape(1, -1)).labels_
         try:
-            index = self.labels.index(label)
+            cur_index = self.labels.index(label)
         except ValueError:
             log.info("adding new pattern")
-            index = len(self.labels)
+            cur_index = len(self.labels)
             self.labels.append(label[0])
             self.markov_graph = np.pad(self.markov_graph, ((0, 1), (0, 1)), 'constant')
             self.alpha = np.append(self.alpha, self.alpha_0)  #
             log.debug("prev_alpha!: \n {}".format(self.alpha))
-            self.markov_chains.add_node(prev_index, index)
+            self.markov_chains.add_node(prev_index, cur_index)
         else:
-            self.markov_chains.strengthen_connect(prev_index, index, self.markov_graph[prev_index, index])
+            self.markov_chains.strengthen_connect(prev_index, cur_index, self.markov_graph[prev_index, cur_index] + 1)
 
-        if prev_index != None :
-            self.markov_graph[prev_index, index] += 1
+        if prev_index != None:
+            self.markov_graph[prev_index, cur_index] += 1
 
-        self.prev_pattern_index = index
+        self.prev_pattern_index = cur_index
+
 
 # online chain clustering
 
@@ -184,11 +198,10 @@ class Node:
 class InputNode(Node):
     def calc_pattern_likelihood(self, node_input):
         patterns = self.clust.cluster_centers_[self.labels]
-        pattern_likelihood = 1/np.linalg.norm(patterns - node_input.reshape(1, -1), 2, 1)
+        pattern_likelihood = 1 / np.linalg.norm(patterns - node_input.reshape(1, -1), 2, 1)
         log.debug(pattern_likelihood)
-        self.pattern_likelihood = pattern_likelihood/np.max(pattern_likelihood)
+        self.pattern_likelihood = pattern_likelihood / np.max(pattern_likelihood)
         log.debug("likelihood:\n {}".format(self.pattern_likelihood))
-
 
 
 if __name__ == "__main__":
